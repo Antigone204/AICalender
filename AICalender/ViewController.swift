@@ -46,19 +46,27 @@ class ViewController: UIViewController , CalendarViewDelegate {
     
     // 示例：返回测试数据
     func calendarView1(_ calendarView: CalendarView, schedulesForDate date: Date) -> [Schedule] {
-        // 这里你可以从数据库或其他数据源获取实际的日程数据
-        // 这里仅作示例返回一些测试数据
         let calendar = Calendar.current
         var schedules: [Schedule] = []
         
         // 创建当天 9:00 的会议
-        if let meetingTime = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date) {
-            schedules.append(Schedule(time: meetingTime, title: "晨会"))
+        if let meetingStartTime = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date),
+           let meetingEndTime = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: date) {
+            schedules.append(Schedule(
+                startTime: meetingStartTime,
+                endTime: meetingEndTime,
+                title: "晨会"
+            ))
         }
         
         // 创建当天 14:30 的任务
-        if let taskTime = calendar.date(bySettingHour: 14, minute: 30, second: 0, of: date) {
-            schedules.append(Schedule(time: taskTime, title: "项目评审"))
+        if let taskStartTime = calendar.date(bySettingHour: 14, minute: 30, second: 0, of: date),
+           let taskEndTime = calendar.date(bySettingHour: 16, minute: 0, second: 0, of: date) {
+            schedules.append(Schedule(
+                startTime: taskStartTime,
+                endTime: taskEndTime,
+                title: "项目评审"
+            ))
         }
         
         return schedules

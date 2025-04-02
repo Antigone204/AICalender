@@ -1,8 +1,25 @@
 import UIKit
 
 struct Schedule {
-    let time: Date
+    let startTime: Date
+    let endTime: Date
     let title: String
+    
+    var duration: TimeInterval {
+        return endTime.timeIntervalSince(startTime)
+    }
+    
+    // 格式化的持续时间
+    var durationText: String {
+        let minutes = Int(duration / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        if hours > 0 {
+            return "\(hours)小时\(remainingMinutes)分钟"
+        } else {
+            return "\(remainingMinutes)分钟"
+        }
+    }
 }
 
 protocol CalendarViewDelegate: AnyObject {
