@@ -87,11 +87,12 @@ class CalendarView: UIView {
     
     private func setupWeekDays() {
         let weekDays = ["日", "一", "二", "三", "四", "五", "六"]
-        for day in weekDays {
+        for (index, day) in weekDays.enumerated() {
             let label = UILabel()
             label.text = day
             label.textAlignment = .center
             label.font = .systemFont(ofSize: 14)
+            label.textColor = (index == 0 || index == 6) ? .systemRed : .label
             weekStackView.addArrangedSubview(label)
         }
     }
@@ -285,16 +286,17 @@ class DayCell: UICollectionViewCell {
         dayFormatter.dateFormat = "d"
         dayLabel.text = dayFormatter.string(from: date)
         
-        if isCurrentMonth {
-            dayLabel.textColor = .label
-        } else {
-            dayLabel.textColor = .secondaryLabel
-        }
+        let weekday = Calendar.current.component(.weekday, from: date)
+        let isWeekend = weekday == 1 || weekday == 7
         
         if Calendar.current.isDateInToday(date) {
             dayLabel.textColor = .systemBlue
             dayLabel.font = .systemFont(ofSize: 16, weight: .bold)
+        } else if isWeekend {
+            dayLabel.textColor = isCurrentMonth ? .systemRed : .systemRed.withAlphaComponent(0.3)
+            dayLabel.font = .systemFont(ofSize: 16)
         } else {
+            dayLabel.textColor = isCurrentMonth ? .label : .secondaryLabel
             dayLabel.font = .systemFont(ofSize: 16)
         }
     }
