@@ -1,6 +1,26 @@
 import UIKit
 
+struct Schedule {
+    let time: Date
+    let title: String
+}
+
+protocol CalendarViewDelegate: AnyObject {
+    func calendarView1(_ calendarView: CalendarView, didSelectDate date: Date)
+    // 可选：获取某天的日程安排
+    func calendarView1(_ calendarView: CalendarView, schedulesForDate date: Date) -> [Schedule]
+}
+
+// 设置可选方法
+extension CalendarViewDelegate {
+    func calendarView1(_ calendarView: CalendarView, schedulesForDate date: Date) -> [Schedule] {
+        return []
+    }
+}
+
 class CalendarView: UIView {
+    weak var delegate: CalendarViewDelegate?
+    
     private let calendar = Calendar.current
     private var currentDate = Date()
     private var days: [Date] = []
@@ -252,6 +272,11 @@ extension CalendarView: UICollectionViewDataSource, UICollectionViewDelegate, UI
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         let width = collectionView.bounds.width / 7
         return CGSize(width: width, height: width)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let selectedDate = days[indexPath.item]
+        delegate?.calendarView1(self, didSelectDate: selectedDate)
     }
 }
 
