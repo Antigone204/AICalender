@@ -206,30 +206,29 @@ class CalendarView: UIView {
         
         var days: [Date] = []
         
-        // Add previous month's days
         if offsetDays > 0 {
             let previousMonth = calendar.date(byAdding: .month, value: -1, to: firstDay)!
-            let previousMonthDays = calendar.range(of: .day, in: .month, for: previousMonth)!.count
-            for i in (previousMonthDays - offsetDays + 1)...previousMonthDays {
-                if let date = calendar.date(byAdding: .day, value: i - previousMonthDays, to: firstDay) {
-                    days.append(date)
+            for i in 1...offsetDays {
+                if let date = calendar.date(byAdding: .day, value: -i, to: firstDay) {
+                    days.insert(date, at: 0)
                 }
             }
         }
         
-        // Add current month's days
         let currentMonthDays = calendar.range(of: .day, in: .month, for: currentDate)!.count
-        for i in 1...currentMonthDays {
-            if let date = calendar.date(byAdding: .day, value: i - 1, to: firstDay) {
+        for i in 0..<currentMonthDays {
+            if let date = calendar.date(byAdding: .day, value: i, to: firstDay) {
                 days.append(date)
             }
         }
         
-        // Add next month's days
-        let remainingDays = 42 - days.count // 6 rows * 7 days = 42
-        for i in 1...remainingDays {
-            if let date = calendar.date(byAdding: .day, value: i, to: days.last!) {
-                days.append(date)
+        let remainingDays = 42 - days.count
+        if remainingDays > 0 {
+            let nextMonthFirstDay = calendar.date(byAdding: .day, value: currentMonthDays, to: firstDay)!
+            for i in 0..<remainingDays {
+                if let date = calendar.date(byAdding: .day, value: i, to: nextMonthFirstDay) {
+                    days.append(date)
+                }
             }
         }
         
