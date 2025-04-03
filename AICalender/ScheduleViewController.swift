@@ -80,8 +80,10 @@ class ScheduleViewController: UIViewController {
     }
     
     @objc private func addScheduleTapped() {
-        // 这里添加新建日程的逻辑
-        // 可以弹出一个表单让用户输入日程详情
+        let addScheduleVC = AddScheduleViewController(date: date)
+        addScheduleVC.delegate = self
+        let nav = UINavigationController(rootViewController: addScheduleVC)
+        present(nav, animated: true)
     }
 }
 
@@ -114,6 +116,16 @@ extension ScheduleViewController: UITableViewDelegate, UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         return schedules.isEmpty ? "全天空闲时间" : "日程安排"
+    }
+}
+
+extension ScheduleViewController: AddScheduleViewControllerDelegate {
+    func addScheduleViewController(_ controller: AddScheduleViewController, didAddSchedule schedule: Schedule) {
+        ScheduleManager.shared.saveSchedule(schedule)
+        schedules.append(schedule)
+        schedules.sort { $0.startTime < $1.startTime }
+        setupTimeSlots()
+        tableView.reloadData()
     }
 }
 
