@@ -40,8 +40,7 @@ class ViewController: UIViewController , CalendarViewDelegate {
         
         // 创建并展示日程视图控制器
         let scheduleVC = ScheduleViewController(date: date, schedules: schedules)
-        let nav = UINavigationController(rootViewController: scheduleVC)
-        present(nav, animated: true)
+        navigationController?.pushViewController(scheduleVC, animated: true)
     }
     
     // 示例：返回测试数据

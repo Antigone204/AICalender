@@ -70,6 +70,13 @@ class ScheduleViewController: UIViewController {
     private func setupNavigationBar() {
         let addButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addScheduleTapped))
         navigationItem.rightBarButtonItem = addButton
+        
+        let backButton = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(backButtonTapped))
+        navigationItem.leftBarButtonItem = backButton
+    }
+    
+    @objc private func backButtonTapped() {
+        navigationController?.popViewController(animated: true)
     }
     
     @objc private func addScheduleTapped() {
