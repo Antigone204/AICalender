@@ -42,6 +42,7 @@ class CalendarView: UIView {
     private var currentDate = Date()
     private var days: [Date] = []
     private var isAnimating = false
+    private var chatHistory: [(role: String, content: String)] = []
     
     private enum AnimationDirection {
         case up
@@ -96,6 +97,44 @@ class CalendarView: UIView {
         return collectionView
     }()
     
+    private lazy var chatTableView: UITableView = {
+        let table = UITableView()
+        table.delegate = self
+        table.dataSource = self
+        table.register(ChatMessageCell.self, forCellReuseIdentifier: "ChatMessageCell")
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.backgroundColor = .clear
+        table.separatorStyle = .none
+        table.estimatedRowHeight = 60
+        table.rowHeight = UITableView.automaticDimension
+        return table
+    }()
+    
+    private lazy var inputContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemBackground
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private lazy var inputTextView: UITextView = {
+        let textView = UITextView()
+        textView.font = .systemFont(ofSize: 16)
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.systemGray4.cgColor
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        return textView
+    }()
+    
+    private lazy var sendButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("发送", for: .normal)
+        button.addTarget(self, action: #selector(sendButtonTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupUI()
@@ -116,10 +155,21 @@ class CalendarView: UIView {
         addSubview(nextButton)
         addSubview(weekStackView)
         addSubview(daysCollectionView)
+        addSubview(chatTableView)
+        addSubview(inputContainer)
+        inputContainer.addSubview(inputTextView)
+        inputContainer.addSubview(sendButton)
         
         setupWeekDays()
         setupConstraints()
         setupGestures()
+        setupKeyboardObservers()
+        
+        // 设置输入框的初始高度
+        inputTextView.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        
+        // 添加测试消息
+        addTestMessage()
     }
     
     private func setupWeekDays() {
@@ -157,7 +207,26 @@ class CalendarView: UIView {
             daysCollectionView.topAnchor.constraint(equalTo: weekStackView.bottomAnchor, constant: 8),
             daysCollectionView.leadingAnchor.constraint(equalTo: leadingAnchor),
             daysCollectionView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            daysCollectionView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            daysCollectionView.heightAnchor.constraint(equalTo: daysCollectionView.widthAnchor, multiplier: 6/7),
+            
+            chatTableView.topAnchor.constraint(equalTo: daysCollectionView.bottomAnchor, constant: 8),
+            chatTableView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            chatTableView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            chatTableView.bottomAnchor.constraint(equalTo: inputContainer.topAnchor),
+            
+            inputContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            inputContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            inputContainer.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            inputContainer.heightAnchor.constraint(equalToConstant: 60),
+            
+            inputTextView.topAnchor.constraint(equalTo: inputContainer.topAnchor, constant: 8),
+            inputTextView.leadingAnchor.constraint(equalTo: inputContainer.leadingAnchor, constant: 16),
+            inputTextView.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -8),
+            inputTextView.bottomAnchor.constraint(equalTo: inputContainer.bottomAnchor, constant: -8),
+            
+            sendButton.centerYAnchor.constraint(equalTo: inputTextView.centerYAnchor),
+            sendButton.trailingAnchor.constraint(equalTo: inputContainer.trailingAnchor, constant: -16),
+            sendButton.widthAnchor.constraint(equalToConstant: 60)
         ])
     }
     
@@ -272,6 +341,78 @@ class CalendarView: UIView {
         
         return days
     }
+    
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+    
+    @objc private func keyboardWillShow(notification: NSNotification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        
+        let insets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardFrame.height, right: 0)
+        chatTableView.contentInset = insets
+        chatTableView.scrollIndicatorInsets = insets
+        
+        // 滚动到底部
+        if !chatHistory.isEmpty {
+            let lastIndex = IndexPath(row: chatHistory.count - 1, section: 0)
+            chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: true)
+        }
+    }
+    
+    @objc private func keyboardWillHide(notification: NSNotification) {
+        chatTableView.contentInset = .zero
+        chatTableView.scrollIndicatorInsets = .zero
+    }
+    
+    @objc private func sendButtonTapped() {
+        guard let text = inputTextView.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return }
+        
+        // 添加用户消息到历史记录
+        chatHistory.append((role: "user", content: text))
+        
+        // 清空输入框
+        inputTextView.text = ""
+        
+        // 刷新表格
+        chatTableView.reloadData()
+        
+        // 滚动到底部
+        if !chatHistory.isEmpty {
+            let lastIndex = IndexPath(row: chatHistory.count - 1, section: 0)
+            chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: true)
+        }
+        
+        // TODO: 调用 AI 服务处理用户输入
+        // 这里需要实现与 LocalAIService 的集成
+    }
+    
+    // 添加测试消息
+    private func addTestMessage() {
+        chatHistory.append((role: "user", content: "你好，我想安排一个会议"))
+        chatHistory.append((role: "assistant", content: "好的，请告诉我会议的具体时间和要求"))
+        chatTableView.reloadData()
+        
+        // 确保消息显示在底部
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if !self.chatHistory.isEmpty {
+                let lastIndex = IndexPath(row: self.chatHistory.count - 1, section: 0)
+                self.chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: false)
+            }
+        }
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // 确保表格视图正确显示
+        chatTableView.layoutIfNeeded()
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 }
 
 extension CalendarView: UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout {
@@ -341,5 +482,104 @@ class DayCell: UICollectionViewCell {
             dayLabel.textColor = isCurrentMonth ? .label : .secondaryLabel
             dayLabel.font = .systemFont(ofSize: 16)
         }
+    }
+}
+
+extension CalendarView: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return chatHistory.count
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ChatMessageCell", for: indexPath) as! ChatMessageCell
+        let message = chatHistory[indexPath.row]
+        cell.configure(with: message)
+        return cell
+    }
+}
+
+class ChatMessageCell: UITableViewCell {
+    private let messageLabel: UILabel = {
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.font = .systemFont(ofSize: 16)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let bubbleView: UIView = {
+        let view = UIView()
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private var leadingConstraint: NSLayoutConstraint?
+    private var trailingConstraint: NSLayoutConstraint?
+    
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupUI() {
+        selectionStyle = .none
+        backgroundColor = .clear
+        
+        contentView.addSubview(bubbleView)
+        bubbleView.addSubview(messageLabel)
+        
+        // 设置消息标签的约束
+        NSLayoutConstraint.activate([
+            messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 8),
+            messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
+            messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
+            messageLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -8),
+            
+            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.75)
+        ])
+        
+        // 初始化约束
+        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+    }
+    
+    func configure(with message: (role: String, content: String)) {
+        messageLabel.text = message.content
+        
+        // 移除旧的约束
+        leadingConstraint?.isActive = false
+        trailingConstraint?.isActive = false
+        
+        if message.role == "user" {
+            bubbleView.backgroundColor = .systemBlue
+            messageLabel.textColor = .white
+            leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+            trailingConstraint = bubbleView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
+        } else {
+            bubbleView.backgroundColor = .systemGray5
+            messageLabel.textColor = .label
+            leadingConstraint = bubbleView.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 16)
+            trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        }
+        
+        // 激活新的约束
+        leadingConstraint?.isActive = true
+        trailingConstraint?.isActive = true
+        
+        // 强制更新布局
+        layoutIfNeeded()
+    }
+    
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        messageLabel.text = nil
+        bubbleView.backgroundColor = nil
     }
 }
