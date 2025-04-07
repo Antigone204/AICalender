@@ -124,6 +124,9 @@ class CalendarView: UIView {
         textView.layer.borderWidth = 1
         textView.layer.borderColor = UIColor.systemGray4.cgColor
         textView.translatesAutoresizingMaskIntoConstraints = false
+        textView.delegate = self
+        textView.returnKeyType = .send
+        textView.enablesReturnKeyAutomatically = true
         return textView
     }()
     
@@ -367,6 +370,10 @@ class CalendarView: UIView {
     }
     
     @objc private func sendButtonTapped() {
+        sendMessage()
+    }
+    
+    private func sendMessage() {
         guard let text = inputTextView.text?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else { return }
         
@@ -581,5 +588,15 @@ class ChatMessageCell: UITableViewCell {
         super.prepareForReuse()
         messageLabel.text = nil
         bubbleView.backgroundColor = nil
+    }
+}
+
+extension CalendarView: UITextViewDelegate {
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        if text == "\n" {
+            sendMessage()
+            return false
+        }
+        return true
     }
 }
