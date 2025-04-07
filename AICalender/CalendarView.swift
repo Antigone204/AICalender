@@ -150,6 +150,9 @@ class CalendarView: UIView {
         return button
     }()
     
+    // 添加输入容器底部约束的引用
+    private var inputContainerBottomConstraint: NSLayoutConstraint?
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupUI()
@@ -182,6 +185,11 @@ class CalendarView: UIView {
         
         // 设置输入框的初始高度
         inputTextView.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        
+        // 添加点击手势来隐藏键盘
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tapGesture.cancelsTouchesInView = false
+        addGestureRecognizer(tapGesture)
     }
     
     private func setupWeekDays() {
@@ -197,6 +205,9 @@ class CalendarView: UIView {
     }
     
     private func setupConstraints() {
+        // 修改输入容器的底部约束
+        inputContainerBottomConstraint = inputContainer.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor)
+        
         NSLayoutConstraint.activate([
             monthLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
             monthLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -228,7 +239,7 @@ class CalendarView: UIView {
             
             inputContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             inputContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            inputContainer.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            inputContainerBottomConstraint!,
             inputContainer.heightAnchor.constraint(equalToConstant: 60),
             
             inputTextView.topAnchor.constraint(equalTo: inputContainer.topAnchor, constant: 8),
@@ -362,22 +373,48 @@ class CalendarView: UIView {
     }
     
     @objc private func keyboardWillShow(notification: NSNotification) {
-        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+              let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt else { return }
         
-        let insets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardFrame.height, right: 0)
+        // 计算键盘高度
+        let keyboardHeight = keyboardFrame.height
+        
+        // 更新输入容器的底部约束
+        inputContainerBottomConstraint?.constant = -keyboardHeight
+        
+        // 更新表格视图的内容插入
+        let insets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardHeight, right: 0)
         chatTableView.contentInset = insets
         chatTableView.scrollIndicatorInsets = insets
         
-        // 滚动到底部
-        if !chatHistory.isEmpty {
-            let lastIndex = IndexPath(row: chatHistory.count - 1, section: 0)
-            chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: true)
+        // 使用动画更新布局
+        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve), animations: {
+            self.layoutIfNeeded()
+        }) { _ in
+            // 滚动到底部
+            if !self.chatHistory.isEmpty {
+                let lastIndex = IndexPath(row: self.chatHistory.count - 1, section: 0)
+                self.chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: true)
+            }
         }
     }
     
     @objc private func keyboardWillHide(notification: NSNotification) {
+        guard let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+              let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt else { return }
+        
+        // 恢复输入容器的底部约束
+        inputContainerBottomConstraint?.constant = 0
+        
+        // 恢复表格视图的内容插入
         chatTableView.contentInset = .zero
         chatTableView.scrollIndicatorInsets = .zero
+        
+        // 使用动画更新布局
+        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve), animations: {
+            self.layoutIfNeeded()
+        })
     }
     
     @objc private func sendButtonTapped() {
@@ -391,8 +428,9 @@ class CalendarView: UIView {
         // 添加用户消息到历史记录
         chatHistory.append((role: "user", content: text))
         
-        // 清空输入框
+        // 清空输入框并隐藏键盘
         inputTextView.text = ""
+        inputTextView.resignFirstResponder()
         
         // 刷新表格
         chatTableView.reloadData()
@@ -451,6 +489,16 @@ class CalendarView: UIView {
                 }
             }
         )
+    }
+    
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        // 获取点击位置
+        let location = gesture.location(in: self)
+        
+        // 如果点击位置不在输入框区域内，则隐藏键盘
+        if !inputContainer.frame.contains(location) {
+            inputTextView.resignFirstResponder()
+        }
     }
     
     override func layoutSubviews() {
