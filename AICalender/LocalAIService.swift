@@ -172,6 +172,7 @@ class LocalAIService {
         private let onComplete: (String?, Error?) -> Void
         private let onLoading: (Bool) -> Void
         private var fullResponse = ""
+        private var tmpAnswer = ""  // 用于存储临时答案
         private var buffer = Data()
         private var messageId: String?
         private var conversationId: String?
@@ -236,7 +237,7 @@ class LocalAIService {
                           let event = json["event"] as? String else {
                         continue
                     }
-                    
+
                     // 处理不同类型的事件
                     switch event {
                     case "agent_message":
@@ -245,32 +246,29 @@ class LocalAIService {
                             DispatchQueue.main.async {
                                 self.onReceive(answer)
                             }
-                        }
-                    case "agent_thought":
-                        if let thought = json["thought"] as? String,
-                           !thought.isEmpty,
-                           let observation = json["observation"] as? String,
-                           let tool = json["tool"] as? String,
-                           let toolInput = json["tool_input"] as? String,
-                           let position = json["position"] as? Int {
                             
-                            let thoughtProcess = """
-                            🤔 思考过程 #\(position)
-                            ----------------
-                            💭 思考: \(thought)
-                            🔧 使用工具: \(tool)
-                            📝 工具输入: \(toolInput)
-                            📋 观察结果: \(observation)
-                            """
-                            
-                            DispatchQueue.main.async {
-                                // 使用 > 来创建可折叠的引用块
-                                self.onThinking("\n\n<展开思考过程 #\(position)>\n\n>\(thoughtProcess.split(separator: "\n").joined(separator: "\n>"))\n\n")
+                            // 检查是否是合法的 JSON 字符串
+                            if !answer.isEmpty,
+                               let jsonData = answer.data(using: .utf8),
+                               (try? JSONSerialization.jsonObject(with: jsonData)) != nil {
+                                tmpAnswer = answer
                             }
                         }
+                    case "agent_thought":
+                        // do nothing
+                        continue
                     case "message_end":
                         self.messageId = json["message_id"] as? String
                         self.conversationId = json["conversation_id"] as? String
+                        print("++++++++++11111json: \(tmpAnswer)")
+                        
+                        // 检查是否是合法的 JSON 字符串
+                        if !tmpAnswer.isEmpty,
+                           let jsonData = tmpAnswer.data(using: .utf8),
+                           let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                            print("++++++++++json: \(jsonObject)")
+                            self.handleScheduleJSON(jsonObject)
+                        }
                         
                     case "error":
                         if let errorMessage = json["message"] as? String {
@@ -319,6 +317,65 @@ class LocalAIService {
                         self.onLoading(false)
                     }
                 }
+            }
+        }
+        
+        // 处理 JSON 数据并更新 CoreData
+        private func handleScheduleJSON(_ json: [String: Any]) {
+            guard let operation = json["operation"] as? String else { return }
+            
+            switch operation {
+            case "add":
+                if let schedule = json["schedule"] as? [String: Any],
+                   let title = schedule["title"] as? String,
+                   let startTimeStr = schedule["startTime"] as? String,
+                   let endTimeStr = schedule["endTime"] as? String,
+                   let startTime = ISO8601DateFormatter().date(from: startTimeStr),
+                   let endTime = ISO8601DateFormatter().date(from: endTimeStr) {
+                    
+                    let newSchedule = Schedule(startTime: startTime, endTime: endTime, title: title)
+                    ScheduleManager.shared.saveSchedule(newSchedule)
+                    print("成功添加日程: \(title)")
+                }
+                
+            case "update":
+                if let oldSchedule = json["oldSchedule"] as? [String: Any],
+                   let newSchedule = json["newSchedule"] as? [String: Any],
+                   let oldTitle = oldSchedule["title"] as? String,
+                   let oldStartTimeStr = oldSchedule["startTime"] as? String,
+                   let oldEndTimeStr = oldSchedule["endTime"] as? String,
+                   let newTitle = newSchedule["title"] as? String,
+                   let newStartTimeStr = newSchedule["startTime"] as? String,
+                   let newEndTimeStr = newSchedule["endTime"] as? String,
+                   let oldStartTime = ISO8601DateFormatter().date(from: oldStartTimeStr),
+                   let oldEndTime = ISO8601DateFormatter().date(from: oldEndTimeStr),
+                   let newStartTime = ISO8601DateFormatter().date(from: newStartTimeStr),
+                   let newEndTime = ISO8601DateFormatter().date(from: newEndTimeStr) {
+                    
+                    let oldSchedule = Schedule(startTime: oldStartTime, endTime: oldEndTime, title: oldTitle)
+                    let updatedSchedule = Schedule(startTime: newStartTime, endTime: newEndTime, title: newTitle)
+                    
+                    // 先删除旧日程，再添加新日程
+                    ScheduleManager.shared.deleteSchedule(oldSchedule)
+                    ScheduleManager.shared.saveSchedule(updatedSchedule)
+                    print("成功更新日程: \(oldTitle) -> \(newTitle)")
+                }
+                
+            case "delete":
+                if let schedule = json["schedule"] as? [String: Any],
+                   let title = schedule["title"] as? String,
+                   let startTimeStr = schedule["startTime"] as? String,
+                   let endTimeStr = schedule["endTime"] as? String,
+                   let startTime = ISO8601DateFormatter().date(from: startTimeStr),
+                   let endTime = ISO8601DateFormatter().date(from: endTimeStr) {
+                    
+                    let scheduleToDelete = Schedule(startTime: startTime, endTime: endTime, title: title)
+                    ScheduleManager.shared.deleteSchedule(scheduleToDelete)
+                    print("成功删除日程: \(title)")
+                }
+                
+            default:
+                print("未知的操作类型: \(operation)")
             }
         }
     }

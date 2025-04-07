@@ -43,6 +43,7 @@ class CalendarView: UIView {
     private var days: [Date] = []
     private var isAnimating = false
     private var chatHistory: [(role: String, content: String)] = []
+    private let aiService = LocalAIService(modelName: "gpt-3.5-turbo")
     
     private enum AnimationDirection {
         case up
@@ -170,9 +171,6 @@ class CalendarView: UIView {
         
         // 设置输入框的初始高度
         inputTextView.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        
-        // 添加测试消息
-        addTestMessage()
     }
     
     private func setupWeekDays() {
@@ -392,23 +390,54 @@ class CalendarView: UIView {
             chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: true)
         }
         
-        // TODO: 调用 AI 服务处理用户输入
-        // 这里需要实现与 LocalAIService 的集成
-    }
-    
-    // 添加测试消息
-    private func addTestMessage() {
-        chatHistory.append((role: "user", content: "你好，我想安排一个会议"))
-        chatHistory.append((role: "assistant", content: "好的，请告诉我会议的具体时间和要求"))
+        // 添加一个空的 AI 消息，用于流式更新
+        chatHistory.append((role: "assistant", content: ""))
         chatTableView.reloadData()
         
-        // 确保消息显示在底部
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if !self.chatHistory.isEmpty {
-                let lastIndex = IndexPath(row: self.chatHistory.count - 1, section: 0)
-                self.chatTableView.scrollToRow(at: lastIndex, at: .bottom, animated: false)
+        // 调用 AI 服务
+        aiService.sendMessageStream(
+            prompt: text,
+            onReceive: { [weak self] content in
+                guard let self = self else { return }
+                // 更新最后一条 AI 消息的内容
+                if let lastIndex = self.chatHistory.lastIndex(where: { $0.role == "assistant" }) {
+                    self.chatHistory[lastIndex].content += content
+                    self.chatTableView.reloadData()
+                    
+                    // 滚动到底部
+                    let lastIndexPath = IndexPath(row: self.chatHistory.count - 1, section: 0)
+                    self.chatTableView.scrollToRow(at: lastIndexPath, at: .bottom, animated: true)
+                }
+            },
+            onThinking: { [weak self] thought in
+                guard let self = self else { return }
+                // 更新最后一条 AI 消息的内容，添加思考过程
+                if let lastIndex = self.chatHistory.lastIndex(where: { $0.role == "assistant" }) {
+                    self.chatHistory[lastIndex].content += thought
+                    self.chatTableView.reloadData()
+                    
+                    // 滚动到底部
+                    let lastIndexPath = IndexPath(row: self.chatHistory.count - 1, section: 0)
+                    self.chatTableView.scrollToRow(at: lastIndexPath, at: .bottom, animated: true)
+                }
+            },
+            onLoading: { [weak self] isLoading in
+                guard let self = self else { return }
+                // 可以在这里更新加载状态
+                self.sendButton.isEnabled = !isLoading
+            },
+            onComplete: { [weak self] content, error in
+                guard let self = self else { return }
+                if let error = error {
+                    print("AI 服务错误: \(error)")
+                    // 更新最后一条 AI 消息为错误信息
+                    if let lastIndex = self.chatHistory.lastIndex(where: { $0.role == "assistant" }) {
+                        self.chatHistory[lastIndex].content = "抱歉，发生错误：\(error.localizedDescription)"
+                        self.chatTableView.reloadData()
+                    }
+                }
             }
-        }
+        )
     }
     
     override func layoutSubviews() {
