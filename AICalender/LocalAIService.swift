@@ -322,20 +322,49 @@ class LocalAIService {
         
         // 处理 JSON 数据并更新 CoreData
         private func handleScheduleJSON(_ json: [String: Any]) {
-            guard let operation = json["operation"] as? String else { return }
+            print("++++++++++11111222222json operation: \(json["operation"])")
+            
+            // 支持 operation 和 action 两种字段名
+            guard let operation = (json["operation"] as? String) ?? (json["action"] as? String) else {
+                print("操作类型解析失败")
+                return
+            }
+            
+            // 创建日期格式化器
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.formatOptions = [.withInternetDateTime]
             
             switch operation {
             case "add":
-                if let schedule = json["schedule"] as? [String: Any],
-                   let title = schedule["title"] as? String,
-                   let startTimeStr = schedule["startTime"] as? String,
-                   let endTimeStr = schedule["endTime"] as? String,
-                   let startTime = ISO8601DateFormatter().date(from: startTimeStr),
-                   let endTime = ISO8601DateFormatter().date(from: endTimeStr) {
-                    
-                    let newSchedule = Schedule(startTime: startTime, endTime: endTime, title: title)
-                    ScheduleManager.shared.saveSchedule(newSchedule)
-                    print("成功添加日程: \(title)")
+                print("开始处理添加日程")
+                if let schedule = json["schedule"] as? [String: Any] {
+                    print("找到 schedule 对象: \(schedule)")
+                    if let title = schedule["title"] as? String,
+                       let startTimeStr = schedule["startTime"] as? String,
+                       let endTimeStr = schedule["endTime"] as? String {
+                        print("找到所有必需字段")
+                        print("title: \(title)")
+                        print("startTimeStr: \(startTimeStr)")
+                        print("endTimeStr: \(endTimeStr)")
+                        
+                        if let startTime = dateFormatter.date(from: startTimeStr),
+                           let endTime = dateFormatter.date(from: endTimeStr) {
+                            print("成功解析日期")
+                            print("startTime: \(startTime)")
+                            print("endTime: \(endTime)")
+                            let newSchedule = Schedule(startTime: startTime, endTime: endTime, title: title)
+                            ScheduleManager.shared.saveSchedule(newSchedule)
+                            print("成功添加日程: \(title)")
+                        } else {
+                            print("日期解析失败")
+                            print("尝试解析的 startTimeStr: \(startTimeStr)")
+                            print("尝试解析的 endTimeStr: \(endTimeStr)")
+                        }
+                    } else {
+                        print("缺少必需字段")
+                    }
+                } else {
+                    print("schedule 对象解析失败")
                 }
                 
             case "update":
@@ -347,10 +376,10 @@ class LocalAIService {
                    let newTitle = newSchedule["title"] as? String,
                    let newStartTimeStr = newSchedule["startTime"] as? String,
                    let newEndTimeStr = newSchedule["endTime"] as? String,
-                   let oldStartTime = ISO8601DateFormatter().date(from: oldStartTimeStr),
-                   let oldEndTime = ISO8601DateFormatter().date(from: oldEndTimeStr),
-                   let newStartTime = ISO8601DateFormatter().date(from: newStartTimeStr),
-                   let newEndTime = ISO8601DateFormatter().date(from: newEndTimeStr) {
+                   let oldStartTime = dateFormatter.date(from: oldStartTimeStr),
+                   let oldEndTime = dateFormatter.date(from: oldEndTimeStr),
+                   let newStartTime = dateFormatter.date(from: newStartTimeStr),
+                   let newEndTime = dateFormatter.date(from: newEndTimeStr) {
                     
                     let oldSchedule = Schedule(startTime: oldStartTime, endTime: oldEndTime, title: oldTitle)
                     let updatedSchedule = Schedule(startTime: newStartTime, endTime: newEndTime, title: newTitle)
@@ -366,8 +395,8 @@ class LocalAIService {
                    let title = schedule["title"] as? String,
                    let startTimeStr = schedule["startTime"] as? String,
                    let endTimeStr = schedule["endTime"] as? String,
-                   let startTime = ISO8601DateFormatter().date(from: startTimeStr),
-                   let endTime = ISO8601DateFormatter().date(from: endTimeStr) {
+                   let startTime = dateFormatter.date(from: startTimeStr),
+                   let endTime = dateFormatter.date(from: endTimeStr) {
                     
                     let scheduleToDelete = Schedule(startTime: startTime, endTime: endTime, title: title)
                     ScheduleManager.shared.deleteSchedule(scheduleToDelete)
