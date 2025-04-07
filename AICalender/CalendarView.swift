@@ -104,10 +104,11 @@ class CalendarView: UIView {
         table.dataSource = self
         table.register(ChatMessageCell.self, forCellReuseIdentifier: "ChatMessageCell")
         table.translatesAutoresizingMaskIntoConstraints = false
-        table.backgroundColor = .clear
+        table.backgroundColor = .systemBackground
         table.separatorStyle = .none
         table.estimatedRowHeight = 60
         table.rowHeight = UITableView.automaticDimension
+        table.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         return table
     }()
     
@@ -115,25 +116,35 @@ class CalendarView: UIView {
         let view = UIView()
         view.backgroundColor = .systemBackground
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOffset = CGSize(width: 0, height: -2)
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowRadius = 4
         return view
     }()
     
     private lazy var inputTextView: UITextView = {
         let textView = UITextView()
         textView.font = .systemFont(ofSize: 16)
-        textView.layer.cornerRadius = 8
+        textView.layer.cornerRadius = 20
         textView.layer.borderWidth = 1
         textView.layer.borderColor = UIColor.systemGray4.cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         textView.translatesAutoresizingMaskIntoConstraints = false
         textView.delegate = self
         textView.returnKeyType = .send
         textView.enablesReturnKeyAutomatically = true
+        textView.backgroundColor = .systemGray6
         return textView
     }()
     
     private lazy var sendButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("发送", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = .systemBlue
+        button.layer.cornerRadius = 20
         button.addTarget(self, action: #selector(sendButtonTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -224,10 +235,12 @@ class CalendarView: UIView {
             inputTextView.leadingAnchor.constraint(equalTo: inputContainer.leadingAnchor, constant: 16),
             inputTextView.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -8),
             inputTextView.bottomAnchor.constraint(equalTo: inputContainer.bottomAnchor, constant: -8),
+            inputTextView.heightAnchor.constraint(equalToConstant: 44),
             
             sendButton.centerYAnchor.constraint(equalTo: inputTextView.centerYAnchor),
             sendButton.trailingAnchor.constraint(equalTo: inputContainer.trailingAnchor, constant: -16),
-            sendButton.widthAnchor.constraint(equalToConstant: 60)
+            sendButton.widthAnchor.constraint(equalToConstant: 60),
+            sendButton.heightAnchor.constraint(equalToConstant: 40)
         ])
     }
     
@@ -545,7 +558,7 @@ class ChatMessageCell: UITableViewCell {
     
     private let bubbleView: UIView = {
         let view = UIView()
-        view.layer.cornerRadius = 12
+        view.layer.cornerRadius = 16
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -599,7 +612,7 @@ class ChatMessageCell: UITableViewCell {
             leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
             trailingConstraint = bubbleView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
         } else {
-            bubbleView.backgroundColor = .systemGray5
+            bubbleView.backgroundColor = .systemGray6
             messageLabel.textColor = .label
             leadingConstraint = bubbleView.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 16)
             trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
