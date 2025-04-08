@@ -69,14 +69,11 @@ class ScheduleManager {
         }
     }
     
-    func fetchSchedules(for date: Date) -> [Schedule] {
-        print("开始获取日期 \(date) 的日程")
-        let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: date)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+    func fetchSchedules(for startDate: Date, to endDate: Date) -> [Schedule] {
+        print("开始获取从 \(startDate) 到 \(endDate) 的日程")
         
         let fetchRequest: NSFetchRequest<ScheduleEntity> = ScheduleEntity.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "startTime >= %@ AND startTime < %@", startOfDay as NSDate, endOfDay as NSDate)
+        fetchRequest.predicate = NSPredicate(format: "startTime >= %@ AND startTime <= %@", startDate as NSDate, endDate as NSDate)
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "startTime", ascending: true)]
         
         do {

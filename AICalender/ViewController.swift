@@ -36,7 +36,10 @@ class ViewController: UIViewController , CalendarViewDelegate {
        // 实现代理方法
     func calendarView1(_ calendarView: CalendarView, didSelectDate date: Date) {
         // 获取当天的日程安排
-        let schedules = ScheduleManager.shared.fetchSchedules(for: date)
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        let schedules = ScheduleManager.shared.fetchSchedules(for: startOfDay, to: endOfDay)
         
         // 创建并展示日程视图控制器
         let scheduleVC = ScheduleViewController(date: date, schedules: schedules)
@@ -45,6 +48,9 @@ class ViewController: UIViewController , CalendarViewDelegate {
     
     // 示例：返回测试数据
     func calendarView1(_ calendarView: CalendarView, schedulesForDate date: Date) -> [Schedule] {
-        return ScheduleManager.shared.fetchSchedules(for: date)
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        return ScheduleManager.shared.fetchSchedules(for: startOfDay, to: endOfDay)
     }
 }

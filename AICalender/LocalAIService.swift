@@ -59,6 +59,10 @@ class LocalAIService {
     4. 查询时返回当天所有日程
     5. 修改和删除时需要提供完整的日程信息以准确定位
     6. 日程安排不能与现有日程冲突
+    7. 在安排新日程时，请考虑用户已有的日程安排，避免时间冲突
+    8. 如果用户没有指定具体时间，请根据已有日程合理安排时间
+    9. 如果用户要求的时间段已被占用，请建议其他合适的时间
+    
     注意：如果识别到用户增删改日程，则只允许返回json字符串 不需要返回任何其他思考信息。其他问题则保持正常回答
     """
     
@@ -83,6 +87,32 @@ class LocalAIService {
         chatHistory.removeAll()
     }
     
+    // 添加获取上下文的方法
+    private func getContextPrompt() -> String {
+        // 获取当前日期前后30天的日程
+        let calendar = Calendar.current
+        let now = Date()
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: now)!
+        let thirtyDaysLater = calendar.date(byAdding: .day, value: 30, to: now)!
+        
+        let schedules = ScheduleManager.shared.fetchSchedules(for: thirtyDaysAgo, to: thirtyDaysLater)
+        
+        if schedules.isEmpty {
+            return "用户目前没有已安排的日程。"
+        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm"
+        
+        var context = "用户已有的日程安排：\n"
+        for schedule in schedules {
+            let startTime = dateFormatter.string(from: schedule.startTime)
+            let endTime = dateFormatter.string(from: schedule.endTime)
+            context += "- \(schedule.title): \(startTime) 到 \(endTime)\n"
+        }
+        
+        return context
+    }
     
     // 发送消息到AI并获取流式回复
     func sendMessageStream(prompt: String, 
@@ -95,10 +125,13 @@ class LocalAIService {
         // 添加用户消息到历史记录
         addMessageToHistory(role: "user", content: prompt)
         
-        // 创建新的请求体格式
+        // 获取上下文信息
+        let context = getContextPrompt()
+        
+        // 创建新的请求体格式，包含上下文
         let requestBody: [String: Any] = [
             "inputs": [:],
-            "query": prompt,
+            "query": "\(context)\n\n用户需求：\(prompt)",
             "response_mode": "streaming",
             "conversation_id": "",
             "user": "abc-123"
