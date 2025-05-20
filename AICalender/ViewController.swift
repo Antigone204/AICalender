@@ -53,4 +53,24 @@ class ViewController: UIViewController , CalendarViewDelegate {
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         return ScheduleManager.shared.fetchSchedules(for: startOfDay, to: endOfDay)
     }
+
+    // 添加缺失的代理方法
+    func openCalendarDetail() {
+        // 获取当前日期的日程安排
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        let schedules = ScheduleManager.shared.fetchSchedules(for: startOfDay, to: endOfDay)
+        
+        // 创建并展示日程视图控制器
+        let scheduleVC = ScheduleViewController(date: Date(), schedules: schedules)
+        navigationController?.pushViewController(scheduleVC, animated: true)
+    }
+    
+    func openAIAssistant() {
+        // 创建一个新的 AI 助手视图控制器
+        let aiAssistantVC = AIAssistantViewController()
+        aiAssistantVC.title = "AI 助手"
+        navigationController?.pushViewController(aiAssistantVC, animated: true)
+    }
 }
