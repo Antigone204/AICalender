@@ -2,11 +2,13 @@ import Foundation
 
 class LocalAIService {
     // 修改API地址
-    private let apiURL = "http://121.48.164.125/v1/chat-messages"
+    private let appID = "ed1923c113784126ba4fdc592222ea01"
+    private let apiURL = "https://dashscope.aliyuncs.com/api/v1/apps/ed1923c113784126ba4fdc592222ea01/completion"
     // 添加认证token
-    private let authToken = "Bearer app-yg1oJwj78IjMcUTDBKh2K9Yo"
-    // 使用的模型名称
-    private let modelName: String
+    private let dashscopeAPIKey = "sk-1c76c3265ea64155b6bd72ceb039828f"
+
+    private let modelName = "qwen-max"
+
     
     // 系统提示词，与原AIService保持一致
     private let systemPrompt = """
@@ -78,9 +80,7 @@ class LocalAIService {
     typealias LoadingHandler = (Bool) -> Void
     
     // 初始化方法
-    init(modelName: String) {
-        self.modelName = modelName
-    }
+    init() {}
     
     // 清除对话历史
     func clearChatHistory() {
@@ -115,11 +115,11 @@ class LocalAIService {
     }
     
     // 发送消息到AI并获取流式回复
-    func sendMessageStream(prompt: String, 
-                         onReceive: @escaping StreamHandler, 
-                         onThinking: @escaping ThinkingHandler, 
-                         onLoading: @escaping LoadingHandler,
-                         onComplete: @escaping CompletionHandler) {
+    func sendMessageStream(prompt: String,
+                          onReceive: @escaping StreamHandler,
+                          onThinking: @escaping ThinkingHandler,
+                          onLoading: @escaping LoadingHandler,
+                          onComplete: @escaping CompletionHandler) {
         print("开始流式请求，提示词: \(prompt)")
         
         // 添加用户消息到历史记录
@@ -128,43 +128,59 @@ class LocalAIService {
         // 获取上下文信息
         let context = getContextPrompt()
         
-        // 创建新的请求体格式，包含上下文
+        // 合并上下文和用户需求
+        let combinedPrompt = """
+        
+        \(context)
+        
+        用户需求：\(prompt)
+        """
+        
+        // 应用的请求体（参照阿里云文档）
         let requestBody: [String: Any] = [
-            "inputs": [:],
-            "query": "\(context)\n\n用户需求：\(prompt)",
-            "response_mode": "streaming",
-            "conversation_id": "",
-            "user": "abc-123"
+            "input": [
+                "prompt": combinedPrompt
+            ],
+            "parameters": [
+                "incremental_output": true
+            ],
+            "debug": [:]
         ]
         
-        // 创建URL
+        // 创建URL（确保apiURL已包含APP_ID）
         guard let url = URL(string: apiURL) else {
             onComplete(nil, NSError(domain: "LocalAIService", code: 0, userInfo: [NSLocalizedDescriptionKey: "无效的URL"]))
             return
         }
         
-        // 创建请求
+        // 创建请求（保留原有header设置）
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(authToken, forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(dashscopeAPIKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("enable", forHTTPHeaderField: "X-DashScope-SSE")
+        request.addValue("*/*", forHTTPHeaderField: "Accept")  // 添加Accept header
+        request.timeoutInterval = 60  // 增加超时时间到60秒
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody, options: [])
-            print("请求体已准备: \(String(data: request.httpBody!, encoding: .utf8) ?? "")")
+            print("发送请求体：\(String(data: request.httpBody!, encoding: .utf8) ?? "")")
         } catch {
             print("请求体序列化失败: \(error)")
             onComplete(nil, error)
             return
         }
         
-        // 创建自定义的流式处理委托
+        // 创建URLSession配置
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 300  // 资源超时时间设置更长
+        
         let streamDelegate = StreamDelegate(
             onReceive: onReceive,
             onThinking: onThinking,
             onLoading: onLoading,
             onComplete: { content, error in
-                // 如果成功接收到完整回复，添加到历史记录
                 if let content = content, error == nil {
                     self.addMessageToHistory(role: "assistant", content: content)
                 }
@@ -172,18 +188,25 @@ class LocalAIService {
             }
         )
         
-        // 创建会话并设置委托
-        let session = URLSession(configuration: .default, delegate: streamDelegate, delegateQueue: .main)
-        
-        // 创建数据任务
+        let session = URLSession(configuration: config, delegate: streamDelegate, delegateQueue: .main)
         let task = session.dataTask(with: request)
-        
-        // 保存任务引用到委托中，以便可以在需要时取消
         streamDelegate.task = task
-        
-        // 开始任务
         task.resume()
         print("流式请求已发送")
+        
+        // 使用新的公共方法检查响应状态
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            if !streamDelegate.hasResponse() {
+                print("警告：5秒内没有收到任何响应")
+                print("请求URL: \(request.url?.absoluteString ?? "未知")")
+                print("请求头: \(request.allHTTPHeaderFields ?? [:])")
+                // 打印更多调试信息
+                if let requestBody = request.httpBody,
+                   let bodyString = String(data: requestBody, encoding: .utf8) {
+                    print("请求体: \(bodyString)")
+                }
+            }
+        }
     }
     
     // 添加消息到历史记录
@@ -203,18 +226,24 @@ class LocalAIService {
         private let onReceive: (String) -> Void
         private let onThinking: (String) -> Void
         private let onComplete: (String?, Error?) -> Void
-        private let onLoading: (Bool) -> Void
+        private let onLoading: (Bool) -> Void // 这里的回调和一开始的typealias很像，或许要统一一下
         private var fullResponse = ""
         private var tmpAnswer = ""  // 用于存储临时答案
         private var buffer = Data()
         private var messageId: String?
         private var conversationId: String?
         private var lastPingTime: Date?
+        private var hasReceivedResponse = false  // 添加响应状态标志
         
         var task: URLSessionDataTask?
         
-        init(onReceive: @escaping (String) -> Void, 
-             onThinking: @escaping (String) -> Void, 
+        // 添加公共方法来检查是否收到响应
+        func hasResponse() -> Bool {
+            return hasReceivedResponse
+        }
+        
+        init(onReceive: @escaping (String) -> Void,
+             onThinking: @escaping (String) -> Void,
              onLoading: @escaping (Bool) -> Void,
              onComplete: @escaping (String?, Error?) -> Void) {
             self.onReceive = onReceive
@@ -226,6 +255,7 @@ class LocalAIService {
         
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             buffer.append(data)
+            hasReceivedResponse = true  // 设置接收到响应的标志
             processBuffer()
         }
         
@@ -244,98 +274,78 @@ class LocalAIService {
         }
         
         private func processBuffer(isComplete: Bool = false) {
-            guard let bufferString = String(data: buffer, encoding: .utf8) else {
-                return
-            }
+            guard let bufferString = String(data: buffer, encoding: .utf8) else { return }
             
-            // 按照SSE格式分割数据流
+            // 处理阿里云 SSE 格式数据
             let chunks = bufferString.components(separatedBy: "\n\n")
             
             for chunk in chunks {
                 guard !chunk.isEmpty else { continue }
                 
-                // 处理 ping 事件
-                if chunk.trimmingCharacters(in: .whitespaces) == "event: ping" {
-                    handlePingEvent()
-                    continue
+                // 解析SSE数据块
+                let lines = chunk.components(separatedBy: "\n")
+                var dataLine: String?
+                var eventType: String?
+                
+                for line in lines {
+                    if line.hasPrefix("data:") {
+                        dataLine = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                    } else if line.hasPrefix("event:") {
+                        eventType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                    }
                 }
                 
-                // 移除"data: "前缀
-                guard chunk.hasPrefix("data: ") else { continue }
-                let jsonString = String(chunk.dropFirst(6))
-                
-                do {
-                    guard let data = jsonString.data(using: .utf8),
-                          let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments]) as? [String: Any],
-                          let event = json["event"] as? String else {
-                        continue
+                // 处理数据行
+                if let dataLine = dataLine {
+                    do {
+                        guard let jsonData = dataLine.data(using: .utf8),
+                              let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                              let output = json["output"] as? [String: Any] else {
+                            continue
+                        }
+                        
+                        // 获取文本内容
+                        if let text = output["text"] as? String {
+                            self.fullResponse += text
+                            DispatchQueue.main.async {
+                                self.onReceive(text)
+                            }
+                        }
+                        
+                        // 检查是否完成
+                        if let finishReason = output["finish_reason"] as? String,
+                           finishReason == "stop" {
+                            // 尝试将完整响应解析为JSON
+                            if let jsonStart = self.fullResponse.firstIndex(of: "{"),
+                               let jsonEnd = self.fullResponse.lastIndex(of: "}") {
+                                let jsonString = String(self.fullResponse[jsonStart...jsonEnd])
+                                do {
+                                    if let jsonData = jsonString.data(using: .utf8),
+                                       let scheduleJson = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                                        DispatchQueue.main.async {
+                                            self.handleScheduleJSON(scheduleJson)
+                                        }
+                                    }
+                                } catch {
+                                    print("JSON解析失败：\(error)")
+                                }
+                            }
+                            DispatchQueue.main.async {
+                                self.onComplete(self.fullResponse, nil)
+                            }
+                        }
+                    } catch {
+                        print("数据处理错误: \(error)")
                     }
-
-                    // 处理不同类型的事件
-                    switch event {
-                    case "agent_message":
-                        if let answer = json["answer"] as? String {
-                            self.fullResponse += answer
-                            DispatchQueue.main.async {
-                                self.onReceive(answer)
-                            }
-                            
-                            // 检查是否是合法的 JSON 字符串
-                            if !answer.isEmpty,
-                               let jsonData = answer.data(using: .utf8),
-                               (try? JSONSerialization.jsonObject(with: jsonData)) != nil {
-                                tmpAnswer = answer
-                            }
-                        }
-                    case "agent_thought":
-                        // do nothing
-                        continue
-                    case "message_end":
-                        self.messageId = json["message_id"] as? String
-                        self.conversationId = json["conversation_id"] as? String
-                        print("++++++++++11111json: \(tmpAnswer)")
-                        
-                        // 检查是否是合法的 JSON 字符串
-                        if !tmpAnswer.isEmpty,
-                           let jsonData = tmpAnswer.data(using: .utf8),
-                           let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                            print("++++++++++json: \(jsonObject)")
-                            self.handleScheduleJSON(jsonObject)
-                        }
-                        
-                    case "error":
-                        if let errorMessage = json["message"] as? String {
-                            DispatchQueue.main.async {
-                                let error = NSError(domain: "LocalAIService",
-                                                  code: json["status"] as? Int ?? 500,
-                                                  userInfo: [NSLocalizedDescriptionKey: errorMessage])
-                                self.onComplete(nil, error)
-                            }
-                        }
-                        
-                    case "message_replace":
-                        if let answer = json["answer"] as? String {
-                            self.fullResponse = answer
-                            DispatchQueue.main.async {
-                                self.onReceive(answer)
-                            }
-                        }
-                        
-                    default:
-                        break
-                    }
-                    
-                } catch {
-                    print("解析流式数据出错: \(error)")
-                    print("原始数据: \(chunk)")
                 }
             }
             
+            // 清空缓冲区（除非是最后一次处理）
             if !isComplete {
                 buffer = Data()
             }
         }
-        
+
         private func handlePingEvent() {
             let currentTime = Date()
             lastPingTime = currentTime
@@ -355,89 +365,62 @@ class LocalAIService {
         
         // 处理 JSON 数据并更新 CoreData
         private func handleScheduleJSON(_ json: [String: Any]) {
-            print("++++++++++11111222222json operation: \(json["operation"])")
-            
-            // 支持 operation 和 action 两种字段名
-            guard let operation = (json["operation"] as? String) ?? (json["action"] as? String) else {
-                print("操作类型解析失败")
-                return
-            }
+            guard let operation = (json["operation"] as? String) ?? (json["action"] as? String) else { return }
             
             // 创建日期格式化器
-            let dateFormatter = ISO8601DateFormatter()
-            dateFormatter.formatOptions = [.withInternetDateTime]
+            let parseFormatter = DateFormatter()
+            parseFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            parseFormatter.locale = Locale(identifier: "en_US_POSIX")
+            parseFormatter.timeZone = TimeZone.current
+            
+            // 创建日期格式化器（用于显示）
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateFormat = "yyyy年MM月dd日 HH:mm"
+            displayFormatter.locale = Locale(identifier: "zh_CN")
+            displayFormatter.timeZone = TimeZone.current
             
             switch operation {
             case "add":
-                print("开始处理添加日程")
-                if let schedule = json["schedule"] as? [String: Any] {
-                    print("找到 schedule 对象: \(schedule)")
-                    if let title = schedule["title"] as? String,
-                       let startTimeStr = schedule["startTime"] as? String,
-                       let endTimeStr = schedule["endTime"] as? String {
-                        print("找到所有必需字段")
-                        print("title: \(title)")
-                        print("startTimeStr: \(startTimeStr)")
-                        print("endTimeStr: \(endTimeStr)")
-                        
-                        if let startTime = dateFormatter.date(from: startTimeStr),
-                           let endTime = dateFormatter.date(from: endTimeStr) {
-                            print("成功解析日期")
-                            print("startTime: \(startTime)")
-                            print("endTime: \(endTime)")
-                            let newSchedule = Schedule(startTime: startTime, endTime: endTime, title: title)
-                            ScheduleManager.shared.saveSchedule(newSchedule)
-                            print("成功添加日程: \(title)")
-                        } else {
-                            print("日期解析失败")
-                            print("尝试解析的 startTimeStr: \(startTimeStr)")
-                            print("尝试解析的 endTimeStr: \(endTimeStr)")
-                        }
-                    } else {
-                        print("缺少必需字段")
-                    }
-                } else {
-                    print("schedule 对象解析失败")
+                if let schedule = json["schedule"] as? [String: Any],
+                   let title = schedule["title"] as? String,
+                   let startTimeStr = schedule["startTime"] as? String,
+                   let endTimeStr = schedule["endTime"] as? String,
+                   let startTime = parseFormatter.date(from: startTimeStr),
+                   let endTime = parseFormatter.date(from: endTimeStr) {
+                    
+                    let newSchedule = Schedule(startTime: startTime, endTime: endTime, title: title)
+                    ScheduleManager.shared.saveSchedule(newSchedule)
+                    print("已添加日程：\(title)")
+                    print("时间：\(displayFormatter.string(from: startTime)) 至 \(displayFormatter.string(from: endTime))")
                 }
                 
             case "update":
                 if let oldSchedule = json["oldSchedule"] as? [String: Any],
                    let newSchedule = json["newSchedule"] as? [String: Any],
                    let oldTitle = oldSchedule["title"] as? String,
-                   let oldStartTimeStr = oldSchedule["startTime"] as? String,
-                   let oldEndTimeStr = oldSchedule["endTime"] as? String,
                    let newTitle = newSchedule["title"] as? String,
-                   let newStartTimeStr = newSchedule["startTime"] as? String,
-                   let newEndTimeStr = newSchedule["endTime"] as? String,
-                   let oldStartTime = dateFormatter.date(from: oldStartTimeStr),
-                   let oldEndTime = dateFormatter.date(from: oldEndTimeStr),
-                   let newStartTime = dateFormatter.date(from: newStartTimeStr),
-                   let newEndTime = dateFormatter.date(from: newEndTimeStr) {
+                   let oldStartTime = parseFormatter.date(from: oldSchedule["startTime"] as? String ?? ""),
+                   let oldEndTime = parseFormatter.date(from: oldSchedule["endTime"] as? String ?? ""),
+                   let newStartTime = parseFormatter.date(from: newSchedule["startTime"] as? String ?? ""),
+                   let newEndTime = parseFormatter.date(from: newSchedule["endTime"] as? String ?? "") {
                     
-                    let oldSchedule = Schedule(startTime: oldStartTime, endTime: oldEndTime, title: oldTitle)
-                    let updatedSchedule = Schedule(startTime: newStartTime, endTime: newEndTime, title: newTitle)
-                    
-                    // 先删除旧日程，再添加新日程
-                    ScheduleManager.shared.deleteSchedule(oldSchedule)
-                    ScheduleManager.shared.saveSchedule(updatedSchedule)
-                    print("成功更新日程: \(oldTitle) -> \(newTitle)")
+                    ScheduleManager.shared.deleteSchedule(Schedule(startTime: oldStartTime, endTime: oldEndTime, title: oldTitle))
+                    ScheduleManager.shared.saveSchedule(Schedule(startTime: newStartTime, endTime: newEndTime, title: newTitle))
+                    print("已更新日程：\(oldTitle) -> \(newTitle)")
                 }
                 
             case "delete":
                 if let schedule = json["schedule"] as? [String: Any],
                    let title = schedule["title"] as? String,
-                   let startTimeStr = schedule["startTime"] as? String,
-                   let endTimeStr = schedule["endTime"] as? String,
-                   let startTime = dateFormatter.date(from: startTimeStr),
-                   let endTime = dateFormatter.date(from: endTimeStr) {
+                   let startTime = parseFormatter.date(from: schedule["startTime"] as? String ?? ""),
+                   let endTime = parseFormatter.date(from: schedule["endTime"] as? String ?? "") {
                     
-                    let scheduleToDelete = Schedule(startTime: startTime, endTime: endTime, title: title)
-                    ScheduleManager.shared.deleteSchedule(scheduleToDelete)
-                    print("成功删除日程: \(title)")
+                    ScheduleManager.shared.deleteSchedule(Schedule(startTime: startTime, endTime: endTime, title: title))
+                    print("已删除日程：\(title)")
                 }
                 
             default:
-                print("未知的操作类型: \(operation)")
+                print("未知的操作类型：\(operation)")
             }
         }
     }
@@ -459,6 +442,8 @@ class LocalAIService {
             completion(nil, error)
             return
         }
+        
+        print("开始发送请求到：\(apiURL)")
         
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -487,4 +472,4 @@ class LocalAIService {
             }
         }.joined(separator: "\n")
     }
-} 
+}
